@@ -1,0 +1,23 @@
+# devops/Dockerfile.my_bot_name-backend
+FROM python:3.13-slim
+
+# Imposta variabili d'ambiente per Cloud Run
+ENV PORT=8080
+
+# Copia i file del modulo comune e delle dipendenze
+WORKDIR /app
+COPY ./src/my_bot_name /app/my_bot_name
+
+# Passa alla directory my_bot_name
+WORKDIR /app/my_bot_name
+
+# Installa Poetry e le dipendenze
+RUN pip install --no-cache-dir poetry
+RUN poetry config virtualenvs.create false && \
+    poetry install --without dev
+
+# Espone la porta per Cloud Run
+EXPOSE 8080
+
+# Comando di avvio
+CMD ["python", "-m", "my_bot_name"]

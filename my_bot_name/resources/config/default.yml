@@ -1,0 +1,8 @@
+api_config:
+  host: '0.0.0.0'
+  port: 8080
+  reload: false
+
+gcp_config:
+  project_id: 'my-bot'
+  region: 'europe-west1'

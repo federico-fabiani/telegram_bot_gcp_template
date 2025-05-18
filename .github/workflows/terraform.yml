@@ -1,0 +1,74 @@
+name: 'Terraform'
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'devops/terraform/**'
+  workflow_dispatch:
+
+jobs:
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Decode Google Cloud Credentials
+      run: echo "${{ secrets.GCP_SA_KEY }}" | base64 -d > ${{ runner.temp }}/gcp-sa-key.json
+
+    - name: Set Permissions on GCP Key File
+      run: chmod 600 ${{ runner.temp }}/gcp-sa-key.json
+
+    - name: Authenticate to Google Cloud
+      uses: 'google-github-actions/auth@v2'
+      with:
+        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+    - name: Set up Cloud SDK
+      uses: 'google-github-actions/setup-gcloud@v2'
+
+    - name: Cloud SDK Version
+      run: gcloud version
+
+    - name: Ensure Terraform bucket exists
+      run: |
+        BUCKET_NAME="${{ vars.GCP_PROJECT_ID }}-tf-state"
+        gsutil mb -p ${{ vars.GCP_PROJECT_ID }} -c standard -l ${{ vars.GCP_REGION }} gs://$BUCKET_NAME || echo "Bucket already exists"
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+  
+    - name: Terraform Version
+      run: terraform version
+
+    - name: Terraform Init
+      run: terraform init -backend-config="bucket=${{ vars.GCP_PROJECT_ID }}-tf-state"
+      working-directory: ./devops/terraform
+      env:
+        GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa-key.json
+
+    - name: Terraform Plan
+      run: terraform plan -input=false
+      working-directory: ./devops/terraform
+      env:
+        TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+        TF_VAR_region: ${{ vars.GCP_REGION }}
+        # TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+        # TF_VAR_langchain_api_key: ${{ secrets.LANGCHAIN_API_KEY }}
+        # TF_VAR_repository_id : ${{ secrets.GCP_ARTIFACT_REGISTRY_REPOSITORY_ID}}
+        GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa-key.json
+
+    - name: Terraform Apply
+      run: terraform apply  -input=false -auto-approve
+      working-directory: ./devops/terraform
+      env:
+        TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+        TF_VAR_region: ${{ vars.GCP_REGION }}
+        # TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+        # TF_VAR_langchain_api_key: ${{ secrets.LANGCHAIN_API_KEY }}
+        # TF_VAR_repository_id : ${{ secrets.GCP_ARTIFACT_REGISTRY_REPOSITORY_ID}}
+        GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa-key.json

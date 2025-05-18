@@ -1,0 +1,60 @@
+name: 'Deploy Chat Service'
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/lucahelp-common/lucahelp_common**'
+      - 'src/lucahelp-chat/my_bot_name**'
+      - 'src/lucahelp-common/pyproject.toml'
+      - 'src/lucahelp-chat/pyproject.toml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: 'Deploy Chat Service'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: 'Decode Google Cloud Credentials'
+        run: echo "${{ secrets.GCP_SA_KEY }}" | base64 -d > ${{ runner.temp }}/gcp-sa-key.json
+
+      - name: Set Permissions on GCP Key File
+        run: chmod 600 ${{ runner.temp }}/gcp-sa-key.json
+
+      - name: 'Authenticate to Google Cloud'
+        uses: 'google-github-actions/auth@v2'
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+      - name: 'Set up Cloud SDK'
+        uses: 'google-github-actions/setup-gcloud@v2'
+      
+      - name: Cloud SDK Version
+        run: gcloud version
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --tag ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_PROJECT_ID }}-repository/my_bot_name:${{ github.sha }} \
+            --tag ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_PROJECT_ID }}-repository/my_bot_name:latest \
+            -f devops/Dockerfile.lucahelp-chat .
+
+      - name: Push Docker image to Google Artifact Registry
+        run: |
+          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_PROJECT_ID }}-repository/my_bot_name:${{ github.sha }}
+          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_PROJECT_ID }}-repository/my_bot_name:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy my_bot_name \
+            --image ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_PROJECT_ID }}-repository/my_bot_name:${{ github.sha }} \
+            --region ${{ secrets.GCP_REGION }}
